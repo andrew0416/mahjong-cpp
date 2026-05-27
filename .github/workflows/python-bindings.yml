@@ -37,6 +37,60 @@ jobs:
       - name: Build
         run: cmake --build build --target nekoriichi
 
+      - name: Package Python module
+        run: |
+          mkdir -p artifact
+          cp build/nekoriichi*.so artifact/
+          cp data/config/* artifact/
+          cat > artifact/verify_nekoriichi.py <<'PY'
+          import os
+          import sys
+          import numpy as np
+
+          artifact_dir = os.path.dirname(os.path.abspath(__file__))
+          os.environ.setdefault("MAHJONG_CPP_DATA_DIR", artifact_dir)
+          sys.path.insert(0, artifact_dir)
+
+          import nekoriichi
+
+          base = nekoriichi.calc_expected_features(
+              "222567m345p33667s",
+              bakaze="E",
+              jikaze="E",
+              dora_indicators=["1z"],
+              t_max=12,
+              enable_uradora=False,
+          )
+          open_hand = nekoriichi.calc_expected_features(
+              "222567m345p33s",
+              bakaze="E",
+              jikaze="S",
+              dora_indicators=["1z"],
+              visible_tiles_mpsz="456z",
+              melds=[{"type": "chi", "tiles": "123s"}],
+              t_max=12,
+              enable_uradora=False,
+          )
+
+          for name, arr in [("base", base), ("open_hand", open_hand)]:
+              assert arr.shape == (12, 34), (name, arr.shape)
+              assert arr.dtype == np.float32, (name, arr.dtype)
+              assert np.isfinite(arr).all(), name
+              assert arr.min() >= 0.0, (name, arr.min())
+              assert arr.max() <= 1.0, (name, arr.max())
+              assert np.count_nonzero(arr) > 0, name
+
+          print("nekoriichi runtime verification passed")
+          print("base sum:", float(base.sum()))
+          print("open_hand sum:", float(open_hand.sum()))
+          PY
+
+      - name: Upload Python module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nekoriichi-linux-py311
+          path: artifact/
+
       - name: Smoke test Python module
         env:
           MAHJONG_CPP_DATA_DIR: ${{ github.workspace }}/build
