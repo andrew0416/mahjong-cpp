@@ -67,6 +67,8 @@ class ExpectedScoreCalculator
         std::vector<double> win_prob;
         /* expected score */
         std::vector<double> exp_score;
+        /* maximum reachable score */
+        std::vector<int> max_score;
         /* list of necessary tiles */
         std::vector<std::tuple<int, int>> necessary_tiles;
         /* shanten */
@@ -108,16 +110,18 @@ class ExpectedScoreCalculator
       public:
         VertexData() = default;
         VertexData(const size_t size, const double tenpai_init, const double win_init,
-                   const double exp_init)
+                   const double exp_init, const int max_init)
             : tenpai_prob(size, tenpai_init)
             , win_prob(size, win_init)
             , exp_score(size, exp_init)
+            , max_score(size, max_init)
         {
         }
 
         std::vector<double> tenpai_prob;
         std::vector<double> win_prob;
         std::vector<double> exp_score;
+        std::vector<int> max_score;
     };
 
     using EdgeData = std::tuple<int, int>;

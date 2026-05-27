@@ -234,6 +234,12 @@ dump_expected_score(const std::vector<ExpectedScoreCalculator::Stat> &stats,
         }
         x.AddMember("exp_score", exp_score, doc.GetAllocator());
 
+        rapidjson::Value max_score(rapidjson::kArrayType);
+        for (const auto value : stat.max_score) {
+            max_score.PushBack(value, doc.GetAllocator());
+        }
+        x.AddMember("max_score", max_score, doc.GetAllocator());
+
         x.AddMember("necessary_tiles", dump_necessary_tiles(stat.necessary_tiles, doc),
                     doc.GetAllocator());
 

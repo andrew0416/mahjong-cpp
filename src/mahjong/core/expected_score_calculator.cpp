@@ -314,7 +314,7 @@ ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::draw_node(
     wait |= (wait & (1LL << Tile::Souzu5)) ? (1LL << Tile::RedSouzu5) : 0;
 
     // Add vertex to graph.
-    VertexData vertex_data(config.t_max + 1, 0.0, 0.0, 0.0);
+    VertexData vertex_data(config.t_max + 1, 0.0, 0.0, 0.0, 0);
     vertex_data.tenpai_prob[config.t_max] = shanten == 0;
     const Vertex vertex = boost::add_vertex(vertex_data, graph);
     cache1[key] = vertex;
@@ -384,7 +384,7 @@ ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::discard_node(
 
     // Add vertex to graph.
     const Vertex vertex = boost::add_vertex(
-        VertexData(config.t_max + 1, shanten == 0, shanten == -1, 0.0), graph);
+        VertexData(config.t_max + 1, shanten == 0, shanten == -1, 0.0, 0), graph);
     cache2[key] = vertex;
 
     for (int i = 0; i < 37; ++i) {
@@ -442,6 +442,8 @@ void ExpectedScoreCalculator::calc_stats(const Config &config, Graph &graph,
                     s1.exp_score[t] += weight * (std::max(static_cast<double>(score),
                                                           s2.exp_score[t + 1]) -
                                                  s1.exp_score[t + 1]);
+                    const int reachable_score = std::max(score, s2.max_score[t + 1]);
+                    s1.max_score[t] = std::max(s1.max_score[t], reachable_score);
                 }
 
                 s1.tenpai_prob[t] =
@@ -461,6 +463,7 @@ void ExpectedScoreCalculator::calc_stats(const Config &config, Graph &graph,
                 s1.tenpai_prob[t] = std::max(s1.tenpai_prob[t], s2.tenpai_prob[t]);
                 s1.win_prob[t] = std::max(s1.win_prob[t], s2.win_prob[t]);
                 s1.exp_score[t] = std::max(s1.exp_score[t], s2.exp_score[t]);
+                s1.max_score[t] = std::max(s1.max_score[t], s2.max_score[t]);
             }
         }
     }
@@ -545,13 +548,15 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
                     get_necessary_tiles(config, player, wall);
 
                 stats.emplace_back(Stat{Tile::Null, state.tenpai_prob, state.win_prob,
-                                        state.exp_score, necessary_tiles, shanten2});
+                                        state.exp_score, state.max_score,
+                                        necessary_tiles, shanten2});
             }
         }
         else {
             const auto [shanten2, necessary_tiles] =
                 get_necessary_tiles(config, player, wall);
-            stats.emplace_back(Stat{Tile::Null, {}, {}, {}, necessary_tiles, shanten2});
+            stats.emplace_back(
+                Stat{Tile::Null, {}, {}, {}, {}, necessary_tiles, shanten2});
         }
     }
     else {
@@ -578,8 +583,8 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
                             get_necessary_tiles(config, player, wall);
 
                         stats.emplace_back(Stat{i, state.tenpai_prob, state.win_prob,
-                                                state.exp_score, necessary_tiles,
-                                                shanten2});
+                                                state.exp_score, state.max_score,
+                                                necessary_tiles, shanten2});
                     }
                     draw(player, hand_counts, wall_counts, i);
                 }
@@ -591,7 +596,8 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
                     discard(player, hand_counts, wall_counts, i);
                     const auto [shanten2, necessary_tiles] =
                         get_necessary_tiles(config, player, wall);
-                    stats.emplace_back(Stat{i, {}, {}, {}, necessary_tiles, shanten2});
+                    stats.emplace_back(
+                        Stat{i, {}, {}, {}, {}, necessary_tiles, shanten2});
                     draw(player, hand_counts, wall_counts, i);
                 }
             }

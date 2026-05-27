@@ -66,6 +66,7 @@ endif()
 option(BUILD_SERVER "build server programs." ON)
 option(BUILD_TEST "build test programs." OFF)
 option(BUILD_SAMPLES "build sample programs." ON)
+option(BUILD_PYTHON "build Python bindings." ON)
 
 # Build mahjong-cpp
 
@@ -83,10 +84,32 @@ set(LIB_NAME mahjong-cpp)
 
 file(GLOB_RECURSE SRC_FILES src/mahjong/*.cpp)
 add_library(${LIB_NAME} ${SRC_FILES})
+set_target_properties(${LIB_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if (MSVC)
   target_link_libraries(${LIB_NAME} ${CMAKE_DL_LIBS} ${Boost_LIBRARIES} spdlog)
 else()
   target_link_libraries(${LIB_NAME} ${CMAKE_DL_LIBS} ${Boost_LIBRARIES} spdlog::spdlog -static-libgcc -static-libstdc++)
+endif()
+
+if(BUILD_PYTHON)
+  find_package(pybind11 QUIET)
+  if(NOT pybind11_FOUND)
+    FetchContent_Declare(
+      pybind11
+      GIT_REPOSITORY https://github.com/pybind/pybind11.git
+      GIT_TAG v2.13.6
+    )
+    FetchContent_MakeAvailable(pybind11)
+  endif()
+
+  pybind11_add_module(nekoriichi src/python/nekoriichi_bindings.cpp)
+  target_link_libraries(nekoriichi PRIVATE ${LIB_NAME})
+  target_include_directories(nekoriichi PRIVATE src)
+  add_custom_command(TARGET nekoriichi POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${CMAKE_SOURCE_DIR}/data/config/uradora.bin
+      $<TARGET_FILE_DIR:nekoriichi>/uradora.bin
+  )
 endif()
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

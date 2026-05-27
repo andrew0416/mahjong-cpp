@@ -1,0 +1,63 @@
+name: Python bindings
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-python-bindings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libboost-filesystem-dev libboost-system-dev pybind11-dev
+          python -m pip install --upgrade pip
+          python -m pip install numpy
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_SERVER=OFF
+          -DBUILD_SAMPLES=OFF
+          -DBUILD_TEST=OFF
+          -DBUILD_PYTHON=ON
+
+      - name: Build
+        run: cmake --build build --target nekoriichi
+
+      - name: Smoke test Python module
+        run: |
+          python - <<'PY'
+          import glob
+          import importlib.util
+
+          modules = glob.glob("build/nekoriichi*.so")
+          assert modules, "nekoriichi extension was not built"
+
+          spec = importlib.util.spec_from_file_location("nekoriichi", modules[0])
+          nekoriichi = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(nekoriichi)
+
+          arr = nekoriichi.calc_expected_features(
+              "222567m345p33667s",
+              bakaze="E",
+              jikaze="E",
+              dora_indicators=["1z"],
+              t_max=12,
+              enable_uradora=False,
+          )
+          assert arr.shape == (12, 34), arr.shape
+          assert str(arr.dtype) == "float32", arr.dtype
+          PY
