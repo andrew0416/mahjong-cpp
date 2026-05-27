@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -36,6 +37,80 @@ int parse_wind(const std::string &wind)
     }
 
     throw std::invalid_argument("wind must be one of E, S, W, N, 1z, 2z, 3z, 4z");
+}
+
+mahjong::Hand from_mpsz_loose(const std::string &tiles)
+{
+    mahjong::Hand hand{0};
+
+    char type = '\0';
+    for (auto it = tiles.rbegin(); it != tiles.rend(); ++it) {
+        const unsigned char ch = static_cast<unsigned char>(*it);
+        if (std::isspace(ch)) {
+            continue;
+        }
+
+        if (*it == 'm' || *it == 'p' || *it == 's' || *it == 'z') {
+            type = *it;
+            continue;
+        }
+
+        if (!std::isdigit(ch)) {
+            throw std::invalid_argument("invalid mpsz tile string");
+        }
+
+        if (type == '\0') {
+            throw std::invalid_argument("mpsz digits must be followed by a suit");
+        }
+
+        const int number = *it - '0';
+        if (type == 'm') {
+            if (number == 0) {
+                ++hand[mahjong::Tile::RedManzu5];
+                ++hand[mahjong::Tile::Manzu5];
+            }
+            else if (1 <= number && number <= 9) {
+                ++hand[mahjong::Tile::Manzu1 + number - 1];
+            }
+            else {
+                throw std::invalid_argument("invalid manzu tile in mpsz string");
+            }
+        }
+        else if (type == 'p') {
+            if (number == 0) {
+                ++hand[mahjong::Tile::RedPinzu5];
+                ++hand[mahjong::Tile::Pinzu5];
+            }
+            else if (1 <= number && number <= 9) {
+                ++hand[mahjong::Tile::Pinzu1 + number - 1];
+            }
+            else {
+                throw std::invalid_argument("invalid pinzu tile in mpsz string");
+            }
+        }
+        else if (type == 's') {
+            if (number == 0) {
+                ++hand[mahjong::Tile::RedSouzu5];
+                ++hand[mahjong::Tile::Souzu5];
+            }
+            else if (1 <= number && number <= 9) {
+                ++hand[mahjong::Tile::Souzu1 + number - 1];
+            }
+            else {
+                throw std::invalid_argument("invalid souzu tile in mpsz string");
+            }
+        }
+        else if (type == 'z') {
+            if (1 <= number && number <= 7) {
+                ++hand[mahjong::Tile::East + number - 1];
+            }
+            else {
+                throw std::invalid_argument("invalid honor tile in mpsz string");
+            }
+        }
+    }
+
+    return hand;
 }
 
 std::vector<int> hand_to_tiles(const mahjong::Hand &hand)
@@ -77,6 +152,89 @@ int parse_single_tile(const std::string &tile_mpsz)
     return tiles.front();
 }
 
+int parse_meld_type(const std::string &type)
+{
+    if (type == "pon" || type == "pong") {
+        return mahjong::MeldType::Pong;
+    }
+    if (type == "chi" || type == "chow") {
+        return mahjong::MeldType::Chow;
+    }
+    if (type == "ankan" || type == "closed_kan" || type == "closed_kong") {
+        return mahjong::MeldType::ClosedKong;
+    }
+    if (type == "kan" || type == "minkan" || type == "open_kan" ||
+        type == "open_kong") {
+        return mahjong::MeldType::OpenKong;
+    }
+    if (type == "kakan" || type == "added_kan" || type == "added_kong") {
+        return mahjong::MeldType::AddedKong;
+    }
+
+    throw std::invalid_argument(
+        "meld type must be one of chi, pon, kan, ankan, kakan");
+}
+
+std::vector<mahjong::Meld> parse_melds(const py::object &melds)
+{
+    std::vector<mahjong::Meld> parsed;
+    if (melds.is_none()) {
+        return parsed;
+    }
+
+    for (const py::handle item : py::reinterpret_borrow<py::iterable>(melds)) {
+        std::string type;
+        std::string tiles_mpsz;
+
+        if (py::isinstance<py::dict>(item)) {
+            const py::dict meld = py::reinterpret_borrow<py::dict>(item);
+            type = py::str(meld["type"]).cast<std::string>();
+            tiles_mpsz = py::str(meld["tiles"]).cast<std::string>();
+        }
+        else {
+            const py::sequence meld = py::reinterpret_borrow<py::sequence>(item);
+            if (py::len(meld) < 2) {
+                throw std::invalid_argument(
+                    "meld entries must be dicts or (type, tiles_mpsz) pairs");
+            }
+            type = py::str(meld[0]).cast<std::string>();
+            tiles_mpsz = py::str(meld[1]).cast<std::string>();
+        }
+
+        std::vector<int> tiles = hand_to_tiles(from_mpsz_loose(tiles_mpsz));
+        parsed.emplace_back(parse_meld_type(type), tiles);
+    }
+
+    return parsed;
+}
+
+void remove_visible_tile(mahjong::Count &wall, const int tile)
+{
+    const int no_red_tile = mahjong::to_no_reddora(tile);
+    --wall[no_red_tile];
+    if (mahjong::is_reddora(tile)) {
+        --wall[tile];
+    }
+
+    if (wall[no_red_tile] < 0 ||
+        (mahjong::is_reddora(tile) && wall[tile] < 0)) {
+        throw std::invalid_argument(
+            "visible_tiles_mpsz contains more visible copies than remain in wall");
+    }
+}
+
+void remove_visible_tiles(mahjong::Count &wall, const std::string &visible_tiles_mpsz)
+{
+    if (visible_tiles_mpsz.empty()) {
+        return;
+    }
+
+    const std::vector<int> tiles = hand_to_tiles(from_mpsz_loose(visible_tiles_mpsz));
+    for (const int tile : tiles) {
+        remove_visible_tile(wall, tile);
+    }
+}
+
 float safe_probability(const std::vector<double> &values, const int turn)
 {
     if (turn < 0 || turn >= static_cast<int>(values.size())) {
@@ -107,12 +265,14 @@ int safe_max_score(const std::vector<int> &values, const int turn)
 py::array_t<float> calc_expected_features(
     const std::string &hand_mpsz, const std::string &bakaze,
     const std::string &jikaze, const std::vector<std::string> &dora_indicators,
-    const int t_min, const int t_max, const int extra, const bool enable_reddora,
+    const std::string &visible_tiles_mpsz, const py::object &melds, const int t_min,
+    const int t_max, const int extra, const bool enable_reddora,
     const bool enable_uradora, const bool enable_shanten_down,
     const bool enable_tegawari, const bool enable_riichi)
 {
     mahjong::Player player;
     player.hand = mahjong::from_mpsz(hand_mpsz);
+    player.melds = parse_melds(melds);
     player.wind = parse_wind(jikaze);
 
     mahjong::Round round;
@@ -136,8 +296,12 @@ py::array_t<float> calc_expected_features(
     config.enable_riichi = enable_riichi;
     config.calc_stats = true;
 
+    mahjong::Count wall =
+        mahjong::ExpectedScoreCalculator::create_wall(round, player, enable_reddora);
+    remove_visible_tiles(wall, visible_tiles_mpsz);
+
     const auto [stats, searched] =
-        mahjong::ExpectedScoreCalculator::calc(config, round, player);
+        mahjong::ExpectedScoreCalculator::calc(config, round, player, wall);
     (void)searched;
 
     py::array_t<float> result(
@@ -215,6 +379,7 @@ PYBIND11_MODULE(nekoriichi, m)
     m.def("calc_expected_features", &calc_expected_features,
           py::arg("hand_mpsz"), py::arg("bakaze") = "E", py::arg("jikaze") = "E",
           py::arg("dora_indicators") = std::vector<std::string>{},
+          py::arg("visible_tiles_mpsz") = "", py::arg("melds") = py::none(),
           py::arg("t_min") = 1, py::arg("t_max") = 12, py::arg("extra") = 1,
           py::arg("enable_reddora") = true, py::arg("enable_uradora") = false,
           py::arg("enable_shanten_down") = true,

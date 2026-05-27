@@ -62,4 +62,17 @@ jobs:
           )
           assert arr.shape == (12, 34), arr.shape
           assert str(arr.dtype) == "float32", arr.dtype
+
+          arr_open = nekoriichi.calc_expected_features(
+              "222567m345p33s",
+              bakaze="E",
+              jikaze="S",
+              dora_indicators=["1z"],
+              visible_tiles_mpsz="456z",
+              melds=[{"type": "chi", "tiles": "123s"}],
+              t_max=12,
+              enable_uradora=False,
+          )
+          assert arr_open.shape == (12, 34), arr_open.shape
+          assert str(arr_open.dtype) == "float32", arr_open.dtype
           PY
