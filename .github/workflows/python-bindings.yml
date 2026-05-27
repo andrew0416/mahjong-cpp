@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          vcpkg install boost-filesystem:x64-windows boost-system:x64-windows
+          vcpkg install boost-dll:x64-windows boost-filesystem:x64-windows boost-graph:x64-windows boost-system:x64-windows
           python -m pip install --upgrade pip
           python -m pip install numpy
 
