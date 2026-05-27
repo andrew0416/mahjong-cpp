@@ -38,6 +38,8 @@ jobs:
         run: cmake --build build --target nekoriichi
 
       - name: Smoke test Python module
+        env:
+          MAHJONG_CPP_DATA_DIR: ${{ github.workspace }}/build
         run: |
           python - <<'PY'
           import glob

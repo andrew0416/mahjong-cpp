@@ -4,7 +4,6 @@
 #include <algorithm> // max, fill
 #include <cassert>
 
-#include <boost/dll.hpp>
 #include <boost/graph/graph_utility.hpp>
 
 #include "mahjong/core/necessary_tile_calculator.hpp"
@@ -611,8 +610,7 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
 
 bool ExpectedScoreCalculator::load_uradora_table()
 {
-    boost::filesystem::path path =
-        boost::dll::program_location().parent_path() / "uradora.bin";
+    boost::filesystem::path path = get_data_path("uradora.bin");
     std::ifstream ifs(path.string(), std::ios::binary);
     ifs.read(reinterpret_cast<char *>(&uradora_table_), sizeof(uradora_table_));
 

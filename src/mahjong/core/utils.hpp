@@ -2,6 +2,11 @@
 #define MAHJONG_CPP_UTILS
 
 #include <array>
+#include <cstdlib>
+#include <string>
+
+#include <boost/dll/runtime_symbol_info.hpp>
+#include <boost/filesystem/path.hpp>
 
 #include "mahjong/types/types.hpp"
 
@@ -9,6 +14,22 @@
 
 namespace mahjong
 {
+
+inline boost::filesystem::path get_data_dir()
+{
+    if (const char *env = std::getenv("MAHJONG_CPP_DATA_DIR")) {
+        if (*env != '\0') {
+            return boost::filesystem::path(env);
+        }
+    }
+
+    return boost::dll::this_line_location().parent_path();
+}
+
+inline boost::filesystem::path get_data_path(const std::string &filename)
+{
+    return get_data_dir() / filename;
+}
 
 template <typename T> inline bool check_exclusive(T x)
 {

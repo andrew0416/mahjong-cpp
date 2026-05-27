@@ -110,9 +110,9 @@ if(BUILD_PYTHON)
   target_link_libraries(nekoriichi PRIVATE ${LIB_NAME})
   target_include_directories(nekoriichi PRIVATE src)
   add_custom_command(TARGET nekoriichi POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      ${CMAKE_SOURCE_DIR}/data/config/uradora.bin
-      $<TARGET_FILE_DIR:nekoriichi>/uradora.bin
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${CMAKE_SOURCE_DIR}/data/config
+      $<TARGET_FILE_DIR:nekoriichi>
   )
 endif()
 
