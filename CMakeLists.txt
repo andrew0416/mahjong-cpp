@@ -14,6 +14,10 @@ if(LANG_EN)
   add_definitions(-DLANG_EN)
   message(STATUS "Enable English language support")
 endif()
+option(BUILD_SERVER "build server programs." ON)
+option(BUILD_TEST "build test programs." OFF)
+option(BUILD_SAMPLES "build sample programs." ON)
+option(BUILD_PYTHON "build Python bindings." ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
@@ -27,7 +31,11 @@ if(MSVC)
 endif()
 
 # Boost
-set(Boost_USE_STATIC_LIBS ON)
+if(BUILD_PYTHON)
+  set(Boost_USE_STATIC_LIBS OFF)
+else()
+  set(Boost_USE_STATIC_LIBS ON)
+endif()
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS filesystem system)
@@ -63,11 +71,6 @@ else()
   FetchContent_MakeAvailable(spdlog)
   message(STATUS "Use fetched spdlog")
 endif()
-
-option(BUILD_SERVER "build server programs." ON)
-option(BUILD_TEST "build test programs." OFF)
-option(BUILD_SAMPLES "build sample programs." ON)
-option(BUILD_PYTHON "build Python bindings." ON)
 
 # Build mahjong-cpp
 
