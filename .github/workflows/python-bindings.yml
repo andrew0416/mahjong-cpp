@@ -85,6 +85,9 @@ jobs:
           print("open_hand sum:", float(open_hand.sum()))
           PY
 
+      - name: Verify packaged artifact
+        run: python artifact/verify_nekoriichi.py
+
       - name: Upload Python module artifact
         uses: actions/upload-artifact@v4
         with:
