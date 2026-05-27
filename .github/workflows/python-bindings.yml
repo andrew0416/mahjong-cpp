@@ -7,7 +7,18 @@ on:
 
 jobs:
   build-python-bindings:
-    runs-on: ubuntu-latest
+    name: Build Python bindings (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            artifact-name: nekoriichi-linux-py311
+          - platform: windows
+            os: windows-latest
+            artifact-name: nekoriichi-windows-py311
 
     steps:
       - name: Check out repository
@@ -18,14 +29,24 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libboost-filesystem-dev libboost-system-dev pybind11-dev
           python -m pip install --upgrade pip
           python -m pip install numpy
 
-      - name: Configure
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install boost-filesystem:x64-windows boost-system:x64-windows
+          python -m pip install --upgrade pip
+          python -m pip install numpy
+
+      - name: Configure Linux
+        if: runner.os == 'Linux'
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
@@ -34,15 +55,37 @@ jobs:
           -DBUILD_TEST=OFF
           -DBUILD_PYTHON=ON
 
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DBUILD_SERVER=OFF
+          -DBUILD_SAMPLES=OFF
+          -DBUILD_TEST=OFF
+          -DBUILD_PYTHON=ON
+
       - name: Build
-        run: cmake --build build --target nekoriichi
+        run: cmake --build build --target nekoriichi --config Release
 
       - name: Package Python module
+        shell: pwsh
         run: |
-          mkdir -p artifact
-          cp build/nekoriichi*.so artifact/
-          cp data/config/* artifact/
-          cat > artifact/verify_nekoriichi.py <<'PY'
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          $module = Get-ChildItem -Path build -Recurse -File -Include "nekoriichi*.so","nekoriichi*.pyd" | Select-Object -First 1
+          if (-not $module) {
+            throw "nekoriichi extension was not built"
+          }
+          Copy-Item $module.FullName artifact/
+          if ($env:RUNNER_OS -eq "Windows") {
+            $vcpkgBin = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/x64-windows/bin"
+            if (Test-Path $vcpkgBin) {
+              Copy-Item (Join-Path $vcpkgBin "*.dll") artifact/ -ErrorAction SilentlyContinue
+            }
+          }
+          Copy-Item data/config/* artifact/
+          @'
           import os
           import sys
           import numpy as np
@@ -83,7 +126,7 @@ jobs:
           print("nekoriichi runtime verification passed")
           print("base sum:", float(base.sum()))
           print("open_hand sum:", float(open_hand.sum()))
-          PY
+          '@ | Set-Content -Encoding UTF8 artifact/verify_nekoriichi.py
 
       - name: Verify packaged artifact
         run: python artifact/verify_nekoriichi.py
@@ -91,10 +134,11 @@ jobs:
       - name: Upload Python module artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nekoriichi-linux-py311
+          name: ${{ matrix.artifact-name }}
           path: artifact/
 
       - name: Smoke test Python module
+        if: runner.os == 'Linux'
         env:
           MAHJONG_CPP_DATA_DIR: ${{ github.workspace }}/build
         run: |
