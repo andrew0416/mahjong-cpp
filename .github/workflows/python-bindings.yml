@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-python-bindings:
-    name: Build Python bindings (${{ matrix.platform }})
+    name: Build Python bindings (${{ matrix.platform }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -15,10 +15,12 @@ jobs:
         include:
           - platform: linux
             os: ubuntu-latest
-            artifact-name: nekoriichi-linux-py311
+            python-version: "3.10"
+            artifact-name: nekoriichi-linux-py310
           - platform: windows
             os: windows-latest
-            artifact-name: nekoriichi-windows-py311
+            python-version: "3.10"
+            artifact-name: nekoriichi-windows-py310
 
     steps:
       - name: Check out repository
@@ -27,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
