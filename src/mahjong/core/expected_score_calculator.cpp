@@ -3,6 +3,7 @@
 #undef NDEBUG
 #include <algorithm> // max, fill
 #include <cassert>
+#include <stdexcept>
 
 #include <boost/graph/graph_utility.hpp>
 
@@ -14,6 +15,32 @@
 
 namespace mahjong
 {
+namespace
+{
+constexpr int MaxSearchRecursionDepth = 512;
+thread_local int search_recursion_depth = 0;
+
+class SearchRecursionGuard
+{
+  public:
+    SearchRecursionGuard()
+    {
+        ++search_recursion_depth;
+        if (search_recursion_depth > MaxSearchRecursionDepth) {
+            --search_recursion_depth;
+            throw std::runtime_error(
+                "ExpectedScoreCalculator search exceeded the safe native recursion "
+                "depth. Try extra=0, enable_tegawari=False, or "
+                "enable_shanten_down=False for this hand.");
+        }
+    }
+
+    ~SearchRecursionGuard()
+    {
+        --search_recursion_depth;
+    }
+};
+} // namespace
 
 /**
  * @brief 山の残り枚数を計算する。
@@ -293,6 +320,7 @@ ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::draw_node(
     if (const auto itr = cache1.find(key); itr != cache1.end()) {
         return itr->second;
     }
+    SearchRecursionGuard recursion_guard;
 
     // Calculate necessary tiles.
     auto [type, shanten, wait] = NecessaryTileCalculator::calc(
@@ -362,6 +390,7 @@ ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::discard_node(
     if (const auto itr = cache2.find(key); itr != cache2.end()) {
         return itr->second;
     }
+    SearchRecursionGuard recursion_guard;
 
     // Calculate unnecessary tiles.
     auto [type, shanten, disc] = UnnecessaryTileCalculator::calc(
