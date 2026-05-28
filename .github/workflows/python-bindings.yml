@@ -7,20 +7,17 @@ on:
 
 jobs:
   build-python-bindings:
-    name: Build Python bindings (${{ matrix.platform }}, Python ${{ matrix.python-version }})
+    name: Build Python bindings (${{ matrix.platform }}, Python ${{ matrix.python-version }}, Boost ${{ matrix.boost-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             python-version: "3.10"
-            artifact-name: nekoriichi-linux-py310
-          - platform: windows
-            os: windows-latest
-            python-version: "3.10"
-            artifact-name: nekoriichi-windows-py310
+            boost-version: "1.74"
+            artifact-name: nekoriichi-linux-py310-boost174
 
     steps:
       - name: Check out repository
@@ -35,7 +32,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libboost-filesystem-dev libboost-system-dev pybind11-dev
+          sudo apt-get install -y ninja-build libboost1.74-dev libboost-filesystem1.74-dev libboost-graph1.74-dev libboost-system1.74-dev pybind11-dev
+          grep "BOOST_LIB_VERSION" /usr/include/boost/version.hpp
           python -m pip install --upgrade pip
           python -m pip install numpy
 
