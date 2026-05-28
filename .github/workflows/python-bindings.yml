@@ -124,22 +124,19 @@ jobs:
               assert np.count_nonzero(arr) > 0, name
 
           crash_regression_hand = "15688m46799p6s237z"
-          try:
-              regression_default = nekoriichi.calc_expected_features(
-                  crash_regression_hand,
-                  bakaze="E",
-                  jikaze="W",
-                  dora_indicators=[],
-                  visible_tiles_mpsz="",
-                  melds=[],
-                  t_max=12,
-                  extra=1,
-                  enable_uradora=False,
-              )
-              assert regression_default.shape == (12, 34), regression_default.shape
-              assert regression_default.dtype == np.float32, regression_default.dtype
-          except RuntimeError as exc:
-              print("search recursion guard triggered:", exc)
+          regression_default = nekoriichi.calc_expected_features(
+              crash_regression_hand,
+              bakaze="E",
+              jikaze="W",
+              dora_indicators=[],
+              visible_tiles_mpsz="",
+              melds=[],
+              t_max=12,
+              extra=1,
+              enable_uradora=False,
+          )
+          assert regression_default.shape == (12, 34), regression_default.shape
+          assert regression_default.dtype == np.float32, regression_default.dtype
 
           regression_extra0 = nekoriichi.calc_expected_features(
               crash_regression_hand,
@@ -158,6 +155,7 @@ jobs:
           print("nekoriichi runtime verification passed")
           print("base sum:", float(base.sum()))
           print("open_hand sum:", float(open_hand.sum()))
+          print("regression default sum:", float(regression_default.sum()))
           print("regression extra0 sum:", float(regression_extra0.sum()))
           '@ | Set-Content -Encoding UTF8 artifact/verify_nekoriichi.py
 
@@ -211,22 +209,19 @@ jobs:
           assert str(arr_open.dtype) == "float32", arr_open.dtype
 
           crash_regression_hand = "15688m46799p6s237z"
-          try:
-              arr_regression_default = nekoriichi.calc_expected_features(
-                  crash_regression_hand,
-                  bakaze="E",
-                  jikaze="W",
-                  dora_indicators=[],
-                  visible_tiles_mpsz="",
-                  melds=[],
-                  t_max=12,
-                  extra=1,
-                  enable_uradora=False,
-              )
-              assert arr_regression_default.shape == (12, 34), arr_regression_default.shape
-              assert str(arr_regression_default.dtype) == "float32", arr_regression_default.dtype
-          except RuntimeError as exc:
-              print("search recursion guard triggered:", exc)
+          arr_regression_default = nekoriichi.calc_expected_features(
+              crash_regression_hand,
+              bakaze="E",
+              jikaze="W",
+              dora_indicators=[],
+              visible_tiles_mpsz="",
+              melds=[],
+              t_max=12,
+              extra=1,
+              enable_uradora=False,
+          )
+          assert arr_regression_default.shape == (12, 34), arr_regression_default.shape
+          assert str(arr_regression_default.dtype) == "float32", arr_regression_default.dtype
 
           arr_regression_extra0 = nekoriichi.calc_expected_features(
               crash_regression_hand,

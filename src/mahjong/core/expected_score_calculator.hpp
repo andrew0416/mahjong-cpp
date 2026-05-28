@@ -1,6 +1,7 @@
 #ifndef MAHJONG_CPP_EXPECTED_SCORE_CALCULATOR
 #define MAHJONG_CPP_EXPECTED_SCORE_CALCULATOR
 
+#include <deque>
 #include <map>
 #include <tuple>
 #include <vector>
@@ -131,6 +132,20 @@ class ExpectedScoreCalculator
     using Edge = Graph::edge_descriptor;
     using Cache = std::map<CacheKey, Vertex>;
 
+    enum class NodeKind
+    {
+        Draw,
+        Discard,
+    };
+
+    struct SearchTask
+    {
+        NodeKind kind;
+        CountRed hand_counts;
+        CountRed wall_counts;
+        bool riichi;
+    };
+
     // uradora_table[num_indicators][num_doras]
     static std::array<std::array<double, 13>, 6> uradora_table_;
 
@@ -154,9 +169,49 @@ class ExpectedScoreCalculator
                      const int tile);
     static void discard(Player &player, CountRed &hand_reds, CountRed &wall_reds,
                         const int tile);
+    static Player make_player_from_counts(const Player &base,
+                                          const CountRed &hand_counts);
+    static void draw_counts(CountRed &hand_counts, CountRed &wall_counts,
+                            const int tile);
+    static void discard_counts(CountRed &hand_counts, CountRed &wall_counts,
+                               const int tile);
     static int calc_score(const Config &config, const Round &round, Player &player,
                           CountRed &hand_counts, CountRed &wall_counts,
                           const int shanten_type, const int tile, const bool riichi);
+    static Vertex ensure_draw_node(const Config &config, const Player &base_player,
+                                   Graph &graph, Cache &cache1,
+                                   const CountRed &hand_counts,
+                                   const CountRed &wall_counts, const bool riichi,
+                                   std::deque<SearchTask> &tasks);
+    static Vertex ensure_discard_node(const Config &config,
+                                      const Player &base_player, Graph &graph,
+                                      Cache &cache2, const CountRed &hand_counts,
+                                      const CountRed &wall_counts,
+                                      const bool riichi,
+                                      std::deque<SearchTask> &tasks);
+    static void expand_draw_node(const Config &config, const Round &round,
+                                 const Player &base_player, Graph &graph,
+                                 Cache &cache1, Cache &cache2,
+                                 const CountRed &hand_counts,
+                                 const CountRed &wall_counts,
+                                 const CountRed &origin_reds, int sht_org,
+                                 const bool riichi,
+                                 std::deque<SearchTask> &tasks);
+    static void expand_discard_node(const Config &config, const Round &round,
+                                    const Player &base_player, Graph &graph,
+                                    Cache &cache1, Cache &cache2,
+                                    const CountRed &hand_counts,
+                                    const CountRed &wall_counts,
+                                    const CountRed &origin_reds, int sht_org,
+                                    const bool riichi,
+                                    std::deque<SearchTask> &tasks);
+    static void build_graph_iterative(const Config &config, const Round &round,
+                                      const Player &base_player, Graph &graph,
+                                      Cache &cache1, Cache &cache2,
+                                      const CountRed &hand_counts,
+                                      const CountRed &wall_counts,
+                                      const CountRed &origin_reds, int sht_org,
+                                      const bool riichi, NodeKind root_kind);
     static Vertex draw_node(const Config &config, const Round &round, Player &player,
                             Graph &graph, Cache &cache1, Cache &cache2,
                             CountRed &hand_reds, CountRed &wall_reds,

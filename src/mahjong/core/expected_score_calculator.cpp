@@ -233,6 +233,37 @@ void ExpectedScoreCalculator::discard(Player &player, CountRed &hand_counts,
     }
 }
 
+Player ExpectedScoreCalculator::make_player_from_counts(const Player &base,
+                                                        const CountRed &hand_counts)
+{
+    Player player = base;
+    std::fill(player.hand.begin(), player.hand.end(), 0);
+    for (int i = 0; i < 34; ++i) {
+        player.hand[i] = hand_counts[i];
+    }
+    player.hand[Tile::RedManzu5] = hand_counts[Tile::RedManzu5];
+    player.hand[Tile::RedPinzu5] = hand_counts[Tile::RedPinzu5];
+    player.hand[Tile::RedSouzu5] = hand_counts[Tile::RedSouzu5];
+    player.hand[Tile::Manzu5] += hand_counts[Tile::RedManzu5];
+    player.hand[Tile::Pinzu5] += hand_counts[Tile::RedPinzu5];
+    player.hand[Tile::Souzu5] += hand_counts[Tile::RedSouzu5];
+    return player;
+}
+
+void ExpectedScoreCalculator::draw_counts(CountRed &hand_counts,
+                                          CountRed &wall_counts, const int tile)
+{
+    ++hand_counts[tile];
+    --wall_counts[tile];
+}
+
+void ExpectedScoreCalculator::discard_counts(CountRed &hand_counts,
+                                             CountRed &wall_counts, const int tile)
+{
+    --hand_counts[tile];
+    ++wall_counts[tile];
+}
+
 int ExpectedScoreCalculator::calc_score(const Config &config, const Round &round,
                                         Player &player, CountRed &hand_counts,
                                         CountRed &wall_counts, const int shanten_type,
@@ -307,6 +338,179 @@ int ExpectedScoreCalculator::calc_score(const Config &config, const Round &round
         }
 
         return score;
+    }
+}
+
+ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::ensure_draw_node(
+    const Config &config, const Player &base_player, Graph &graph, Cache &cache1,
+    const CountRed &hand_counts, const CountRed &wall_counts, const bool riichi,
+    std::deque<SearchTask> &tasks)
+{
+    CacheKey key(hand_counts);
+    if (const auto itr = cache1.find(key); itr != cache1.end()) {
+        return itr->second;
+    }
+
+    Player player = make_player_from_counts(base_player, hand_counts);
+    auto [type, shanten, wait] = NecessaryTileCalculator::calc(
+        player.hand, player.num_melds(), config.shanten_type);
+
+    VertexData vertex_data(config.t_max + 1, 0.0, 0.0, 0.0, 0);
+    vertex_data.tenpai_prob[config.t_max] = shanten == 0;
+    const Vertex vertex = boost::add_vertex(vertex_data, graph);
+    cache1[key] = vertex;
+    tasks.push_back(SearchTask{NodeKind::Draw, hand_counts, wall_counts, riichi});
+    return vertex;
+}
+
+ExpectedScoreCalculator::Vertex ExpectedScoreCalculator::ensure_discard_node(
+    const Config &config, const Player &base_player, Graph &graph, Cache &cache2,
+    const CountRed &hand_counts, const CountRed &wall_counts, const bool riichi,
+    std::deque<SearchTask> &tasks)
+{
+    CacheKey key(hand_counts);
+    if (const auto itr = cache2.find(key); itr != cache2.end()) {
+        return itr->second;
+    }
+
+    Player player = make_player_from_counts(base_player, hand_counts);
+    auto [type, shanten, disc] = UnnecessaryTileCalculator::calc(
+        player.hand, player.num_melds(), config.shanten_type);
+
+    const Vertex vertex = boost::add_vertex(
+        VertexData(config.t_max + 1, shanten == 0, shanten == -1, 0.0, 0), graph);
+    cache2[key] = vertex;
+    tasks.push_back(SearchTask{NodeKind::Discard, hand_counts, wall_counts, riichi});
+    return vertex;
+}
+
+void ExpectedScoreCalculator::expand_draw_node(
+    const Config &config, const Round &round, const Player &base_player, Graph &graph,
+    Cache &cache1, Cache &cache2, const CountRed &hand_counts,
+    const CountRed &wall_counts, const CountRed &hand_org, const int shanten_org,
+    const bool riichi, std::deque<SearchTask> &tasks)
+{
+    const Vertex vertex = cache1.at(CacheKey(hand_counts));
+    Player player = make_player_from_counts(base_player, hand_counts);
+
+    auto [type, shanten, wait] = NecessaryTileCalculator::calc(
+        player.hand, player.num_melds(), config.shanten_type);
+    const bool allow_tegawari =
+        config.enable_tegawari &&
+        distance(hand_counts, hand_org) + shanten < shanten_org + config.extra;
+    wait |= (wait & (1LL << Tile::Manzu5)) ? (1LL << Tile::RedManzu5) : 0;
+    wait |= (wait & (1LL << Tile::Pinzu5)) ? (1LL << Tile::RedPinzu5) : 0;
+    wait |= (wait & (1LL << Tile::Souzu5)) ? (1LL << Tile::RedSouzu5) : 0;
+
+    for (int i = 0; i < 37; ++i) {
+        const bool is_wait = wait & (1LL << i);
+        if (!wall_counts[i] || (!allow_tegawari && !is_wait)) {
+            continue;
+        }
+
+        CountRed next_hand = hand_counts;
+        CountRed next_wall = wall_counts;
+        const int weight = next_wall[i];
+        draw_counts(next_hand, next_wall, i);
+
+        const bool call_riichi =
+            config.enable_riichi && player.is_closed() && shanten == 1 && is_wait
+                ? true
+                : riichi;
+        const Vertex target = ensure_discard_node(config, base_player, graph, cache2,
+                                                  next_hand, next_wall, call_riichi,
+                                                  tasks);
+
+        if (!boost::edge(vertex, target, graph).second) {
+            int score = 0;
+            if (shanten == 0 && is_wait) {
+                Player score_player = make_player_from_counts(base_player, next_hand);
+                CountRed score_hand = next_hand;
+                CountRed score_wall = next_wall;
+                score = calc_score(config, round, score_player, score_hand, score_wall,
+                                   type, i, riichi);
+            }
+            boost::add_edge(vertex, target, {weight, score}, graph);
+        }
+    }
+}
+
+void ExpectedScoreCalculator::expand_discard_node(
+    const Config &config, const Round &round, const Player &base_player, Graph &graph,
+    Cache &cache1, Cache &cache2, const CountRed &hand_counts,
+    const CountRed &wall_counts, const CountRed &hand_org, const int shanten_org,
+    const bool riichi, std::deque<SearchTask> &tasks)
+{
+    const Vertex vertex = cache2.at(CacheKey(hand_counts));
+    Player player = make_player_from_counts(base_player, hand_counts);
+
+    auto [type, shanten, disc] = UnnecessaryTileCalculator::calc(
+        player.hand, player.num_melds(), config.shanten_type);
+    const bool allow_shanten_down =
+        config.enable_shanten_down &&
+        distance(hand_counts, hand_org) + shanten < shanten_org + config.extra;
+    disc |= (disc & (1LL << Tile::Manzu5)) ? (1LL << Tile::RedManzu5) : 0;
+    disc |= (disc & (1LL << Tile::Pinzu5)) ? (1LL << Tile::RedPinzu5) : 0;
+    disc |= (disc & (1LL << Tile::Souzu5)) ? (1LL << Tile::RedSouzu5) : 0;
+
+    for (int i = 0; i < 37; ++i) {
+        const bool is_disc = disc & (1LL << i);
+        if (!hand_counts[i] || (!allow_shanten_down && !is_disc)) {
+            continue;
+        }
+
+        CountRed next_hand = hand_counts;
+        CountRed next_wall = wall_counts;
+        discard_counts(next_hand, next_wall, i);
+
+        const int weight = next_wall[i];
+        const Vertex source = ensure_draw_node(config, base_player, graph, cache1,
+                                               next_hand, next_wall, riichi, tasks);
+
+        if (!boost::edge(source, vertex, graph).second) {
+            int score = 0;
+            if (shanten == -1) {
+                Player score_player = make_player_from_counts(base_player, hand_counts);
+                CountRed score_hand = hand_counts;
+                CountRed score_wall = wall_counts;
+                score = calc_score(config, round, score_player, score_hand, score_wall,
+                                   type, i, riichi);
+            }
+            boost::add_edge(source, vertex, {weight, score}, graph);
+        }
+    }
+}
+
+void ExpectedScoreCalculator::build_graph_iterative(
+    const Config &config, const Round &round, const Player &base_player, Graph &graph,
+    Cache &cache1, Cache &cache2, const CountRed &hand_counts,
+    const CountRed &wall_counts, const CountRed &hand_org, const int shanten_org,
+    const bool riichi, const NodeKind root_kind)
+{
+    std::deque<SearchTask> tasks;
+    if (root_kind == NodeKind::Draw) {
+        ensure_draw_node(config, base_player, graph, cache1, hand_counts, wall_counts,
+                         riichi, tasks);
+    }
+    else {
+        ensure_discard_node(config, base_player, graph, cache2, hand_counts,
+                            wall_counts, riichi, tasks);
+    }
+
+    while (!tasks.empty()) {
+        const SearchTask task = tasks.front();
+        tasks.pop_front();
+
+        if (task.kind == NodeKind::Draw) {
+            expand_draw_node(config, round, base_player, graph, cache1, cache2,
+                             task.hand_counts, task.wall_counts, hand_org, shanten_org,
+                             task.riichi, tasks);
+        }
+        else {
+            expand_discard_node(config, round, base_player, graph, cache1, cache2,
+                                task.hand_counts, task.wall_counts, hand_org,
+                                shanten_org, task.riichi, tasks);
+        }
     }
 }
 
@@ -561,8 +765,9 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
             // 期待値、確率計算を行う場合
 
             // 13枚の場合は自摸を起点に手牌遷移のグラフを作成する。
-            draw_node(config, round, player, graph, cache1, cache2, hand_counts,
-                      wall_counts, hand_org, shanten_org, riichi);
+            build_graph_iterative(config, round, player, graph, cache1, cache2,
+                                  hand_counts, wall_counts, hand_org, shanten_org,
+                                  riichi, NodeKind::Draw);
 
             // 確率、期待値を計算する。
             calc_stats(config, graph, cache1, cache2);
@@ -592,8 +797,9 @@ ExpectedScoreCalculator::calc(const Config &_config, const Round &round,
             // 期待値、確率計算を行う場合
 
             // 14枚の場合は打牌を起点に手牌遷移のグラフを作成する。
-            discard_node(config, round, player, graph, cache1, cache2, hand_counts,
-                         wall_counts, hand_org, shanten_org, riichi);
+            build_graph_iterative(config, round, player, graph, cache1, cache2,
+                                  hand_counts, wall_counts, hand_org, shanten_org,
+                                  riichi, NodeKind::Discard);
 
             // 確率、期待値を計算する。
             calc_stats(config, graph, cache1, cache2);
